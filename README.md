@@ -8,7 +8,7 @@ To set up and run the project locally, follow these steps:
 
 1. **Clone the repository**
 
-   git clone https://github.com/Orfreoua/irc.git
+	`git clone https://github.com/Orfreoua/irc.git`
 
 2. **Build the project**
 
@@ -78,14 +78,14 @@ from IRC clients (such as **Netcat** or a real IRC client) on a specified port, 
 	`MODE #mychannel -l  # Remove the user limit`
 
 ## Further Documentation
-	
+
 	https://modern.ircdocs.horse
 
 ## Important Note for Some Environments
 
 	In some environments, such as Netcat, you may need to manually add both a carriage return (\r) and a newline (\n)
-	 at the end of each command for the server to correctly interpret it. Some terminals, like Netcat, do not automatically
-	  add these characters, so the server might not process the command as expected.
+	at the end of each command for the server to correctly interpret it. Some terminals, like Netcat, do not automatically
+	add these characters, so the server might not process the command as expected.
 
 	To do this:
 
