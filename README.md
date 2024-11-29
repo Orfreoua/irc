@@ -13,6 +13,7 @@ To set up and run the project locally, follow these steps:
 2. **Build the project**
 
 	`cd irc`
+
 	`make`
 
 3. **Run the project**
@@ -52,19 +53,31 @@ ________________________________________________________________________________
 
 7. **Use Additional Commands**
 
-	```INVITE nickname #mychannel```
-	```KICK #mychannel nickname```
-	```TOPIC #mychannel :New topic text```
-	```MODE #mychannel +i  # Make the channel invite-only```
-	```MODE #mychannel -i  # Allow anyone to join the channel```
-	```MODE #mychannel +t  # Make topic-only by operators```
-	```MODE #mychannel -t  # Allow everyone to change the topic```
-	```MODE #mychannel +k password123  # Set a password for the channel```
-	```MODE #mychannel -k  # Remove the password requirement```
-	```MODE #mychannel +o nickname  # Grant operator status to a user```
-	```MODE #mychannel -o nickname  # Revoke operator status```
-	```MODE #mychannel +l 50  # Limit the channel to 50 users```
-	```MODE #mychannel -l  # Remove the user limit```
+	`INVITE nickname #mychannel`
+
+	`KICK #mychannel nickname`
+
+	`TOPIC #mychannel :New topic text`
+
+	`MODE #mychannel +i  # Make the channel invite-only`
+
+	`MODE #mychannel -i  # Allow anyone to join the channel`
+
+	`MODE #mychannel +t  # Make topic-only by operators`
+
+	`MODE #mychannel -t  # Allow everyone to change the topic`
+
+	`MODE #mychannel +k password123  # Set a password for the channel`
+
+	`MODE #mychannel -k  # Remove the password requirement`
+
+	`MODE #mychannel +o nickname  # Grant operator status to a user`
+
+	`MODE #mychannel -o nickname  # Revoke operator status`
+
+	`MODE #mychannel +l 50  # Limit the channel to 50 users`
+
+	`MODE #mychannel -l  # Remove the user limit`
 
 _____________________________________________________________________________________________________________________________
 
