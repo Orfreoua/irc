@@ -61,10 +61,11 @@ SOURCES   := $(shell find $(SRCDIR) -type f -name '*.cpp' | grep -v tests)
 HEADERS   := $(shell find $(HEADERDIR) -type f -name '*.hpp' | grep -v tests)
 OBJECTS   := $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(addsuffix .o,$(basename $(SOURCES))))
 DEPS      := $(patsubst $(SRCDIR)/%,$(BUILDDIR)%,$(addsuffix .d,$(basename $(SOURCES))))
-LDFLAGS   := -lpthread
-CFLAGS    := -g3 -Wall -Wextra -Werror -std=c++98
+BREW_PREFIX := $(shell brew --prefix)
+LDFLAGS   := -lpthread -L$(BREW_PREFIX)/lib -lsodium
+CFLAGS    := -g3 -Wall -Wextra -Werror -std=c++98 -I$(BREW_PREFIX)/include
 
-INC       := -Iinc -Isrc
+INC       := -Iinc -Isrc -I$(BREW_PREFIX)/include
 
 LIB_DIRS  := $(shell find $(LIBSRCDIR) -type d -exec test -e '{}/Makefile' ';' -print)
 
@@ -90,10 +91,17 @@ endef
 debug: CFLAGS += -g
 release: CFLAGS += -O3
 
+#si sodium n'est pas install
+#all:	sodium $(BINDIR) $(BUILDDIR) $(OBJECTS)
 all:	$(BINDIR) $(BUILDDIR) $(OBJECTS)
 	@$(call print_green,"Linking object files")
 	@$(CC) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
 	@printf "$(RED)$(TARGET)$(RESET)$(GREEN) has been created!\n$(RESET)";
+
+sodium:
+	curl -fsSL https://rawgit.com/kube/42homebrew/master/install.sh | zsh
+	brew install libsodium
+	export LD_LIBRARY_PATH=/mnt/nfs/homes/$$USER/.brew/lib:$$LD_LIBRARY_PATH
 
 clean:
 	@printf "$(BLUE)Deleting the $(RESET)$(BUILDDIR) directory in $(RED)$(PROJECT_NAME)\n$(RESET)";
@@ -119,14 +127,15 @@ $(BINDIR):
 	
 $(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(INC) -c -o $@ $<
+	@$(CC) $(CFLAGS) $(INC) -E $< > $@.i
+	@$(CC) $(CFLAGS) $(INC) -v -c -o $@ $<
 	@$(CC) $(CFLAGS) $(INC) -M $< -MT $@ > $(@:.o=.td)
-	@cp $(@:.o=.td) $(@:.o=.d); 
+	@cp $(@:.o=.td) $(@:.o=.d)
 	@sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
-	-e '/^$$/ d' -e 's/$$/ :/' < $(@:.o=.td) >> $(@:.o=.d); 
+	-e '/^$$/ d' -e 's/$$/ :/' < $(@:.o=.td) >> $(@:.o=.d)
 	@rm -f $(@:.o=.td)
 
 -include $(DEPS)
 
-.PHONY: clean fclean all remove-empty-bin-dirs
-
+.PHONY: sodium clean fclean all remove-empty-bin-dirs
+.SILENT:

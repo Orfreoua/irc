@@ -1,10 +1,7 @@
 #ifndef SIGNAL_H
 #define SIGNAL_H
 
-#include <signal.h>
-#include <stdlib.h>
-#include <iostream>
-#include <sstream>
+#include "headers.hpp"
 
 extern int  port;
 

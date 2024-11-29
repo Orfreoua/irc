@@ -1,46 +1,69 @@
-#include "IRCServer.hpp"
-#include "signal.hpp"
 
-#define MAX_CLIENTS 1000 // Nombre maximal de clients pouvant être connectés
-#define BUFFER_SIZE 1024 // Taille du buffer
+#include "headers.hpp"
+
 
 int port;
+int is_running;
 
-int main(int argc, char* argv[]) 
-{
-	//-- gestion de la sortie via signal
-	signal_catching();
+void printCenteredText(const std::string &text) {
+    // Get terminal dimensions
+    struct winsize w;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+    int columns = w.ws_col;
 
-    if (argc != 3) 
-    {
-        std::cerr << "Usage: " << argv[0] << " <port> <password>" << std::endl;
-        exit(EXIT_FAILURE);
-    }
-    port = std::atoi(argv[1]);
-    std::string password = argv[2];
+    // Calculate the starting column for centered text
+    int text_length = text.length();
+    int start_col = (columns - text_length) / 2;
 
-    try
-    {
-        IRCServer server;
+    // Clear the screen and position the cursor
+    std::cout << "\x1b[2J\x1b[H";
 
-        //server.setIpProtocol(AF_INET6);
-        server.setPort(port);
-        server.setPassword(password);
+    // Move the cursor to row 1, middle column
+    std::cout << "\x1b[1;" << start_col << "H";
 
-        if(!server.initSocket()) { throw std::runtime_error("Failed to init socket."); }
-
-        if(!server.bindSocket()) { throw std::runtime_error("Failed to bind socket."); }
-
-        if(!server.isListening()) { throw std::runtime_error("Failed to listen connections."); }
-    
-        server.acceptClients();
-    } 
-    catch (const std::runtime_error& e) 
-    {
-        std::cerr << "ERROR: " << e.what() << std::endl;
-        return (EXIT_FAILURE);
-    }
-    return (EXIT_SUCCESS);
-    
+    // Print the formatted text
+    std::cout << "\x1b[1;5;31m" << text << "\x1b[0m" << std::endl;
 }
 
+int main(int argc, char *argv[]) {
+  //-- gestion de la sortie via signal
+  IRCServer& server = IRCServer::getInstance();
+  signal_catching();
+
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0] << " <port> <pass>" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  int port = std::atoi(argv[1]);
+  std::string pass = argv[2];
+
+  try {
+    // Use the singleton instance
+    server.setPort(port);
+    server.setPass(pass);
+
+    if (!server.initSocket()) {
+      throw std::runtime_error("Failed to init socket.");
+    }
+
+    if (!server.bindSocket()) {
+      throw std::runtime_error("Failed to bind socket.");
+    }
+    printCenteredText("Welcome to 42IRC !");
+
+    if (sodium_init() == -1) {
+      std::cout << "Failed to init libsodium" << std::endl;
+      return EXIT_FAILURE;
+    }
+
+    if (!server.isListening()) {
+      throw std::runtime_error("Failed to listen connections.");
+    }
+
+    server.acceptClients();
+  } catch (const std::runtime_error &e) {
+    std::cerr << "ERROR: " << e.what() << std::endl;
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}

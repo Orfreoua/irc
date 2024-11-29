@@ -1,198 +1,283 @@
-#include <iostream>
-#include <stdexcept>
-#include <cstring>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <string>
-#include "IRCClient.hpp"
-#include "IRCServer.hpp"
+#include "headers.hpp"
 
-IRCServer::IRCServer() {
-    if (serverSocket != -1) { close(serverSocket); }
+IRCServer& IRCServer::getInstance() {
+		static IRCServer instance;
+		return instance;
+}
+
+// IRCServer::IRCServer() : port(0), serverSocket(-1) {}
+
+IRCServer::IRCServer() : port(0), hashedPass(""), serverSocket(-1), nfds(0) {
+		for (int i = 0; i < MAX_CLIENTS + 1; ++i) {
+				fds[i].fd = -1;  // Initialiser tous les descripteurs à -1
+				fds[i].events = 0;
+				fds[i].revents = 0;
+		}
+}
+
+int IRCServer::getPort() const {
+		return port;
 }
 
 IRCServer::~IRCServer() {
-    std::map<int, IRCClient*>::iterator it;
-    for (it = clients.begin(); it != clients.end(); ++it) {
-        delete it->second;  // Delete the dynamically allocated IRCClient
+    for (std::map<std::string, Channel*>::iterator it = chan.begin(); it != chan.end(); ++it) {
+        delete it->second; // delete the dynamically allocated Channel
     }
-    clients.clear();  // Clear the map after deleting all allocated objects
+    chan.clear();
+}
+
+const IRCServerCapabilities &IRCServer::getCapabilities() const {
+	return this
+			->capabilities; // Return the reference to the capabilities instance
 }
 
 bool IRCServer::initSocket() {
 	this->serverSocket = socket(AF_INET6, SOCK_STREAM, 0);
-	if (this->serverSocket == -1) 
-        return (false);
-    return (true);
+	if (this->serverSocket == -1)
+		return (false);
+	return (true);
 }
 
-void IRCServer::setPassword(const std::string& pass) { this->password = pass; }
+void IRCServer::sendFormattedReply(int clientSocket, int replyCode,
+																	 const std::vector<std::string> &params,
+																	 const std::string &message) {
+	std::string formattedMessage =
+			MessageFormatter::formatIRCMessage(replyCode, params, message);
+	std::stringstream ss;
+
+	ss << getClient(clientSocket)->getFullPrefix() << formattedMessage << "\r\n";
+	formattedMessage = ss.str();
+	send(clientSocket, formattedMessage.c_str(), formattedMessage.length(), 0);
+}
+
+void IRCServer::setPass(const std::string &rawPass) {
+	char hash[crypto_pwhash_STRBYTES];
+	if (crypto_pwhash_str(hash, rawPass.c_str(), rawPass.length(),
+												crypto_pwhash_OPSLIMIT_INTERACTIVE,
+												crypto_pwhash_MEMLIMIT_INTERACTIVE) != 0) {
+		throw std::runtime_error("Hashing pass failed: out of memory.");
+	}
+	this->hashedPass = std::string(hash);
+}
+
+bool IRCServer::verifyPass(const std::string &attempt, int clientSocket) {
+	if (this->hashedPass.empty()) {
+		std::cerr << "No hashed password set for verification." << std::endl;
+		std::vector<std::string> params;
+		params.push_back("Server"); // Manually push back the string into the vector
+		sendFormattedReply(clientSocket, ERR_PASSWDMISMATCH, params,
+											 "No password set on server.");
+		return false;
+	}
+
+	if (crypto_pwhash_str_verify(this->hashedPass.c_str(), attempt.c_str(),
+															 attempt.length()) != 0) {
+		return false;
+	}
+
+	return true;
+}
 
 void IRCServer::setPort(int p) { this->port = p; }
 
 bool IRCServer::bindSocket() {
- 	struct sockaddr_in6 serverAddress;
+	struct sockaddr_in6 serverAddress;
 	std::memset(&serverAddress, 0, sizeof(serverAddress));
 	serverAddress.sin6_family = AF_INET6; // Utilise IPv6
-	serverAddress.sin6_port = htons(this->port); // Port (en ordre d'octets en réseau)
-	serverAddress.sin6_addr = in6addr_any; //Utilise toutes les interfaces disponibles
-	if (bind(this->serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
+	serverAddress.sin6_port =
+			htons(this->port); // Port (en ordre d'octets en réseau)
+	serverAddress.sin6_addr =
+			in6addr_any; // Utilise toutes les interfaces disponibles
+	if (bind(this->serverSocket, (struct sockaddr *)&serverAddress,
+					 sizeof(serverAddress)) == -1) {
 		close(this->serverSocket);
 		return (false);
 	}
-    return (true);
-
+	return (true);
 }
 
 bool IRCServer::isListening() {
-   if (listen(this->serverSocket, 5) == -1) 
-   {
-        close(this->serverSocket);
-        return (false);
+	if (listen(this->serverSocket, 5) == -1) {
+		close(this->serverSocket);
+		return (false);
 	}
-    return (true);
-    
+	return (true);
 }
 
-void IRCServer::setupPolling(struct pollfd* fds, int& nfds) {
-    fds[0].fd = this->serverSocket;
-    fds[0].events = POLLIN;
-    nfds = 1; // Initial value 1 for server socket
+void IRCServer::setupPolling() {
+	fds[0].fd = this->serverSocket;
+	fds[0].events = POLLIN | POLLOUT;
+	nfds = 1; // Initial value 1 for server socket
 }
 
-bool IRCServer::handleNewConnection(struct pollfd* fds, int& nfds) {
-    int clientSocket = accept(this->serverSocket, NULL, NULL);
-    if (clientSocket == -1) {
-        std::cerr << "Error: Failed to accept connection." << std::endl;
-        close(this->serverSocket);
-        return (false);
-    }
-    fds[nfds].fd = clientSocket;
-    fds[nfds].events = POLLIN;
-    nfds++;
-    this->addClient(clientSocket);
-    return (true);
+bool IRCServer::handleNewConnection() {
+	int clientSocket = accept(this->serverSocket, NULL, NULL);
+	if (clientSocket == -1) {
+		std::cerr << "Error code: " << errno << " (" << strerror(errno) << ")." << std::endl;
+		close(this->serverSocket);
+		return (false);
+	}
+	fds[nfds].fd = clientSocket;
+	fds[nfds].events = POLLIN;
+	nfds++;
+	this->addClient(clientSocket);
+	return (true);
 }
 
-void IRCServer::processClientData(struct pollfd* fds, int& nfds, int index) {
-    char buffer[BUFFER_SIZE];
-    ssize_t bytesRead = recv(fds[index].fd, buffer, BUFFER_SIZE - 1, 0);
-    if (bytesRead <= 0) { handleDisconnection(fds, nfds, index); }
-	else {
-        buffer[bytesRead] = '\0'; // Null-terminate the received data
-        // Assuming that the buffer might contain commands that need processing
-        std::map<int, IRCClient*>::iterator it = clients.find(fds[index].fd);
-        if (it != clients.end()) {
-            it->second->runCommand(std::string(buffer));  // Process the command
-        }
-        // Broadcast the message to other clients
-        broadcastMessage(fds, nfds, fds[index].fd, buffer);
-    }
+// Handles reading data from the client and determining further action
+void IRCServer::processClientData(int index) {
+	char buffer[BUFFER_SIZE];
+	ssize_t bytesRead = readClientData(fds[index].fd, buffer, BUFFER_SIZE);
+
+	if (bytesRead <= 0) {
+		handleDisconnection(index);
+	} else {
+		handleClientCommand(index, buffer);
+	}
 }
 
-void IRCServer::broadcastMessage(struct pollfd fds[], int nfds, int senderFd, const char* message) {
-    std::map<int, IRCClient*>::iterator it = clients.find(senderFd);
-    if (it != clients.end()) {
-        std::string formattedMessage = MessageFormatter::formatMessage(it->second->getNickValue(), message);
-        const char* fullMessageCStr = formattedMessage.c_str();
-        ssize_t fullMessageLength = std::strlen(fullMessageCStr);
-
-        for (int i = 1; i < nfds; ++i) {
-            if (fds[i].fd != senderFd) {
-                std::cout << ">> " << fullMessageCStr;
-                ssize_t bytesSent = send(fds[i].fd, fullMessageCStr, fullMessageLength, 0);
-                if (bytesSent == -1)
-                    std::cerr << "Error sending message to client" << std::endl;
-            }
-        }
-    }
+// Reads data from a client socket
+ssize_t IRCServer::readClientData(int fd, char *buffer, int bufferSize) {
+	ssize_t bytesRead = recv(fd, buffer, bufferSize - 1, 0);
+	if (bytesRead > 0) {
+		buffer[bytesRead] = '\0'; // Null-terminate the received data
+	}
+	return bytesRead;
 }
 
-void IRCServer::handleDisconnection(struct pollfd* fds, int& nfds, int index) {
-    std::cout << "Client disconnected." << std::endl;
-    close(fds[index].fd);
-    this->deleteClient(fds[index].fd);
-    for (int j = index; j < nfds - 1; ++j) { fds[j] = fds[j + 1]; }
-    nfds--;
+// Handles the execution of a command from the buffer
+void IRCServer::handleClientCommand(int index, const char *buffer) {
+	(void)nfds;
+		std::map<int, IRCClient *>::iterator clientIt = clients.find(fds[index].fd);
+		if (clientIt != clients.end()) {
+				std::vector<std::pair<std::string, std::string> > commandParamsList = clientIt->second->parseCommands(buffer);
+
+				for (size_t i = 0; i < commandParamsList.size(); ++i) {
+						const std::pair<std::string, std::string> &commandParams = commandParamsList[i];
+						std::string command = commandParams.first;
+						std::string params = commandParams.second;
+						std::cout << "Processing command: " << command << " with params: " << params << std::endl;
+						if (commandParams.first == "QUIT") {
+							clientIt->second->handleQuit(commandParams.second);
+						} else { 
+								clientIt->second->executeCommand(command, params);
+								std::string prefix = clientIt->second->getFullPrefix();
+								std::cout << "Received message from " << (clientIt->second->isRegistered ? prefix : "unregistered client") << ": " << command << " " << params << std::endl;
+						}
+				}
+		}
+}
+
+// Extracts the message content from the command parameters
+std::string IRCServer::extractMessageContent(const std::string &params) {
+	size_t firstSpace = params.find(' ');
+	if (firstSpace != std::string::npos) {
+		return params.substr(firstSpace + 1);
+	}
+	return "";
+}
+
+void IRCServer::broadcastMessage(int senderFd, const char *message) {
+	// Find the sender's client object in the map of clients
+	std::map<int, IRCClient *>::iterator it = clients.find(senderFd);
+	if (it != clients.end()) {
+		// Format the message by including the sender's nickname
+		std::string formattedMessage = MessageFormatter::formatChatMessage(
+				it->second->getNickValue(), message);
+		const char *fullMessageCStr = formattedMessage.c_str();
+		ssize_t fullMessageLength = std::strlen(fullMessageCStr);
+		// Broadcast the formatted message to all connected clients except the
+		// sender
+		for (int i = 1; i < nfds; ++i) {
+			if (fds[i].fd != senderFd &&
+					fds[i].fd != -1) { // Ensure not sending back to the sender
+				std::cout << ">> " << fullMessageCStr; // Logging the message to be sent
+				ssize_t bytesSent =
+						send(fds[i].fd, fullMessageCStr, fullMessageLength, 0);
+				if (bytesSent == -1) {
+					std::cerr << "Error sending message to client"
+										<< std::endl; // Log error if send fails
+				}
+			}
+		}
+	}
+}
+
+void IRCServer::handleDisconnection(int index) {
+	std::cout << "Client disconnected." << std::endl;
+	close(fds[index].fd);
+
+	this->deleteClient(fds[index].fd);
+	for (int j = index; j < nfds - 1; ++j) {
+		fds[j] = fds[j + 1];
+	}
+	nfds--;
 }
 
 bool IRCServer::acceptClients() {
-    struct pollfd fds[MAX_CLIENTS + 1];
-	int nfds = 0; // Declare nfds here, initializing to 0
-
-    setupPolling(fds, nfds);
-    while (true) {
-        int pollResult = poll(fds, nfds, -1);
-        if (pollResult == -1) {
-            std::cerr << "Error in poll" << std::endl;
-            close(this->serverSocket);
-            return (false);
-        }
-        if (fds[0].revents & POLLIN) {
-            if (!handleNewConnection(fds, nfds)) { return false; }
-        }
-        for (int i = 1; i < nfds; ++i) {
-            if (fds[i].revents & POLLIN) { processClientData(fds, nfds, i); }
-        }
-    }
-    return (true); // This may be unreachable; consider how you want to handle termination.
+		setupPolling(); // Mettre à jour cet appel pour ne pas passer les paramètres
+		is_running = 1;
+		while (is_running) {
+				int pollResult = poll(fds, nfds, -1);
+				if (pollResult == -1) {
+						/*if (!is_running)
+							std::cerr << "Error in poll" << std::endl;*/
+						close(this->serverSocket);
+						IRCServer::getInstance().closeAllClients();
+						return (false);
+				}
+				if (fds[0].revents & POLLIN) {
+						if (!handleNewConnection()) {
+								return false;
+						}
+				}
+				for (int i = 1; i < nfds; ++i) {
+						if (fds[i].revents & POLLIN) {
+								processClientData(i);
+						}
+				}
+		}
+		return (true); // This may be unreachable; consider how you want to handle termination.
 }
 
-/*
--- Ajoute un client à la la liste des clients
-*/
 void IRCServer::addClient(int clientSocket) {
-    IRCClient* newClient = new IRCClient();  // Dynamically allocate a new IRCClient object
-	newClient->server = this;
-    newClient->socket = clientSocket;        // Set the socket for this client
-    this->clients[clientSocket] = newClient; // Store the pointer in the map
-    std::cout << "New client connected: " << newClient->nick << " (socket:" << clientSocket << ")" << std::endl;
+		IRCClient* newClient = new IRCClient(clientSocket);  // Dynamically allocate a new IRCClient object
+		newClient->server = this;
+		this->clients[clientSocket] = newClient; // Store the pointer in the map
+		addUser(newClient->nick, newClient);/////a ajouter
+	std::cout << "New client connected " << " (socket:" << clientSocket << ")" << std::endl;
+	return ;
 }
 
-/*
--- Supprime un client à la la liste des clients
-*/
 void IRCServer::deleteClient(int clientSocket) {
-    std::map<int, IRCClient*>::iterator it = clients.find(clientSocket);
-    if (it != clients.end()) {
-        delete it->second;  // Delete the dynamically allocated IRCClient
-        clients.erase(it);  // Remove the entry from the map
-    }
+		std::map<int, IRCClient*>::iterator it = clients.find(clientSocket);
+		if (it != clients.end()) {
+				delete it->second;  // Delete the dynamically allocated IRCClient
+				clients.erase(it);  // Remove the entry from the map
+		}
+		close(clientSocket);
 }
 
-bool IRCServer::joinChannel(const std::string& channelName, const std::string& nick, const std::string& password) {
-    std::map<std::string, ChannelInfo>::iterator it = channels.find(channelName);
-    if (it != channels.end()) {
-        // Channel exists, check conditions
-        if (it->second.password != password) {
-            std::cerr << "Incorrect password for channel: " << channelName << std::endl;
-            return false;
-        }
-        
-        std::vector<std::string>::iterator memberIt;
-        bool isMember = false;
-        for (memberIt = it->second.members.begin(); memberIt != it->second.members.end(); ++memberIt) {
-            if (*memberIt == nick) {
-                isMember = true;
-                break;
-            }
-        }
-        if (isMember) {
-            std::cerr << "User already in channel: " << channelName << std::endl;
-            return false;
-        }
-
-        // Add the user to the channel's members list
-        it->second.members.push_back(nick);
-        return true;
-    } else {
-        // Create the channel if it doesn't exist
-        ChannelInfo newChannel(channelName, password);
-        newChannel.members.push_back(nick);
-        channels.insert(std::make_pair(channelName, newChannel));
-        return true;
-    }
+bool IRCServer::isPasswordRequired() const {
+		return !hashedPass.empty();
 }
 
+void IRCServer::closeAllClients() {
+		std::map<int, IRCClient *>::iterator it;
+		for (it = clients.begin(); it != clients.end(); ++it) {
+				close(it->first);
+				delete it->second;
+		}
+		clients.clear();
+}
+
+void IRCServer::disableReadEvents(int clientSocket) {
+		for (int i = 0; i < nfds; ++i) {
+				if (fds[i].fd == clientSocket) {
+						fds[i].events &= ~POLLIN; // Désactiver les événements de lecture
+						// fds[i].events &= ~POLLOUT; // Désactiver les événements d'écriture si nécessaire
+						break;
+						std::cout << "Removed writing and reading" << std::endl;
+				}
+		}
+}

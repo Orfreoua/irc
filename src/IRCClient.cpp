@@ -1,164 +1,299 @@
-#include <iostream>
-#include <stdexcept>
-#include <cstring>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <string>
-#include "IRCClient.hpp"
-#include <map>
-#include <sstream>
+#include "headers.hpp"
 
-// Default constructor
-IRCClient::IRCClient() 
-    : socket(-1), nick(""), user("defaultUser"), realname(""), host(""), mode("") {
-    initCommandHandlers(); // Initialize command handlers
+
+IRCClient::IRCClient(int sock) 
+	: socket(sock), realname(""), host(""), mode(""), isAuthenticated(false), isOperator(false), isNicked(false),
+	  isUserSet(false), isRegistered(false)  {
+	initCommandHandlers();
+	
+		std::stringstream ss;
+		ss << sock;
+		nick = "defaultUser_" + ss.str();
+		user = "defaultUser_" + ss.str();
+
+}
+
+IRCClient::~IRCClient()
+{
 }
 
 // Parameterized constructor with socket and host
-IRCClient::IRCClient(int sock, const std::string& host)
-    : socket(sock), nick(""), user("defaultUser"), realname(""), host(host), mode("") {
-    initCommandHandlers(); // Initialize command handlers
+IRCClient::IRCClient(int sock, const std::string &host)
+	: socket(sock), nick(""), user(""), realname(""), host(host), mode(""),
+	  isAuthenticated(false), isOperator(false), isNicked(false),
+	  isUserSet(false), isRegistered(false) {
+	
+	initCommandHandlers(); // Initialize command handlers
+
+	std::stringstream ss;
+	ss << sock;
+	nick = "defaultUser_" + ss.str();
+	user = "defaultUser_" + ss.str();
 }
 
-// Setter for server
-void IRCClient::setServer(IRCServer* server) {
-    this->server = server;
-}
+void IRCClient::setServer(IRCServer *server) { this->server = server; }
 
-// Setter for nickname
-void IRCClient::setNick(const std::string& nick) {
-	this->nick = nick;
-}
+int	IRCClient::getSocket() { return (socket); }
 
-void IRCClient::initCommandHandlers() {
-	// ? Client Commands
-	commandHandlers["NICK"] = &IRCClient::handleNick;
-	commandHandlers["USER"] = &IRCClient::handleUser;
-	commandHandlers["JOIN"] = &IRCClient::handleJoin;
-	// TODO :commandHandlers["PRIVMSG"] = &IRCClient::handlePrivMsg;
-	// TODO :commandHandlers["PART"] = &IRCClient::handlePart;
-	// TODO :commandHandlers["MODE"] = &IRCClient::handleMode;
-	// TODO :commandHandlers["QUIT"] = &IRCClient::handleQuit;
-	// TODO :commandHandlers["NOTICE"] = &IRCClient::handleNotice;
-	// TODO :commandHandlers["TOPIC"] = &IRCClient::handleNotice;
-	// TODO :commandHandlers["KICK"] = &IRCClient::handleKick;
-	// TODO :commandHandlers["LIST"] = &IRCClient::handleList;
-	// TODO :commandHandlers["WHOIS"] = &IRCClient::handleWhois;
-	// TODO :commandHandlers["INVITE"] = &IRCClient::handleInvite;
-	// TODO :commandHandlers["NAMES"] = &IRCClient::handleNames;
-
-	// ? Server Commands ?
-	// TODO :commandHandlers["PASS"] = &IRCClient::handlePass;
-	// TODO :commandHandlers["SERVER"] = &IRCClient::handleServer;
-	// TODO :commandHandlers["CONNECT"] = &IRCClient::handleConnect;
-	// Add more handlers if needed
-}
-
-// This function processes the "NICK" command and sets the nickname
-void IRCClient::handleNick(const std::string& params) {
-	std::string cleanNick = params;
-	// Check and strip newline or any trailing whitespace characters if necessary
-	if (!cleanNick.empty() && (cleanNick[cleanNick.length() - 1] == '\n' || cleanNick[cleanNick.length() - 1] == '\r')) {
-		cleanNick.erase(cleanNick.find_last_not_of(" \n\r\t") + 1); // Trim right
-	}
-	setNick(cleanNick);
-	std::cout << "Nickname set to: " << this->nick << std::endl;
-}
-
-// Getter for nickname
-std::string IRCClient::getNickValue() {
+std::string	IRCClient::getNick()
+{
 	return this->nick;
 }
 
-void IRCClient::handleUser(const std::string& params) {
-    // Example format: "username mode unused :realname"
-    std::istringstream iss(params);
-    std::string username, mode, unused, realname;
 
-    // Read the username, mode, and unused (servername) directly
-    if (!(iss >> username >> mode >> unused)) {
-        std::cerr << "Invalid USER command format." << std::endl;
-        return;
-    }
-
-    // The rest should be the real name, which might include spaces
-    // Attempt to capture the entire line after ':'
-    getline(iss, realname);
-    size_t colonPos = realname.find(':');
-    if (colonPos != std::string::npos) {
-        realname = realname.substr(colonPos + 1);  // Extract real name after ':'
-    } else {
-        realname = "Anonymous";  // Default real name if not provided
-    }
-
-    setUserDetails(username, mode, unused, realname);
-    std::cout << "User registered with username: " << username 
-              << ", mode: " << mode << ", servername: " << unused 
-              << " and real name: " << (realname.empty() ? "Anonymous" : realname) << std::endl;
-}
-
-void IRCClient::setUserDetails(const std::string& username, const std::string& mode, const std::string& servername, const std::string& realname) {
-    this->user = username;
-    this->mode = mode;  // Ensure there is a `mode` member variable in IRCClient
-    this->host = servername;  // Ensure there is a `servername` member variable in IRCClient
-    this->realname = realname;  // Ensure there is a `realName` member variable in IRCClient
-}
-
-void IRCClient::joinChannel(const std::string& channelName, const std::string& password) {
-    // Request the server to join the channel
-    bool success = server->joinChannel(channelName, this->nick, password);
-    if (success) {
-        std::cout << "Joined channel: " << channelName << std::endl;
-    } else {
-        std::cerr << "Failed to join channel: " << channelName << std::endl;
-    }
-}
-
-void IRCClient::handleJoin(const std::string& params) {
-    std::istringstream iss(params);
-    std::string channelName, password;
-
-    // Read the channel name and optionally a password
-    iss >> channelName;
-    getline(iss, password);  // Assume password may follow after a space
-
-    if (channelName.empty() || channelName[0] != '#') {
-        std::cerr << "Invalid channel name: " << channelName << std::endl;
-        return;
-    }
-
-    // Trim potential leading whitespace in password
-    password.erase(0, password.find_first_not_of(" \t"));
-
-    // Call joinChannel to attempt to join the channel, with explicit instance qualification
-    this->joinChannel(channelName, password);
+void IRCClient::addChannel(const std::string& channelName)
+{
+	bool found = false;
+	for (size_t i = 0; i < channels.size(); ++i) {
+		if (channels[i] == channelName) {
+			found = true;
+			break;
+		}
+	}
+	if (!found)
+	{
+	channels.push_back(channelName);
+	}
 }
 
 
-// Function to execute commands based on the buffer received
-bool IRCClient::runCommand(const std::string& buffer) {
-	std::string command;
-	std::string params;
+void    IRCClient::msg(std::string str)
+{
+	const char* msg = str.c_str();
+	ssize_t msg_len = std::strlen(msg);
+	if (msg_len > 510)
+	{
+		str[510] = '\r';
+		str[511] = '\n';
+	}
+	msg = str.c_str();
+	send(getSocket(), msg, msg_len, 0);
+}
 
-	// Find the first space to separate command from parameters
-	size_t spacePos = buffer.find(' ');
-	if (spacePos != std::string::npos) {
-		command = buffer.substr(0, spacePos);
-		params = buffer.substr(spacePos + 1);
-	} else {
-		command = buffer;  // The command might not have parameters
+void	IRCClient::rmChan(std::string chan)
+{
+	for (std::vector<std::string>::iterator it = channels.begin(); it != channels.end(); ++it) {
+        if (*it == chan) {
+            channels.erase(it);
+            break; // Exit the loop once the element is found and removed
+        }
+    }
+}
+
+void IRCClient::initCommandHandlers() {
+	commandHandlers["NICK"] = &IRCClient::handleNick;
+	commandHandlers["USER"] = &IRCClient::handleUser;
+	commandHandlers["JOIN"] = &IRCClient::handleJoin;
+	commandHandlers["TOPIC"] = &IRCClient::handleTopic;
+	commandHandlers["KICK"] = &IRCClient::handleKick;
+	//commandHandlers["SET"] = &IRCClient::handleSet;
+	commandHandlers["MODE"] = &IRCClient::handleMode;
+	commandHandlers["PRIVMSG"] = &IRCClient::handlePrivMsg;
+	commandHandlers["INVITE"] = &IRCClient::handleInvite;
+	commandHandlers["PASS"] = &IRCClient::handlePass;
+	commandHandlers["CAP"] = &IRCClient::handleCap;
+	commandHandlers["PING"] = &IRCClient::handlePing;
+	commandHandlers["MODE"] = &IRCClient::handleMode;
+	commandHandlers["QUIT"] = &IRCClient::handleQuit;
+}
+
+const std::map<int, IRCClient*>& IRCServer::getClients() const {
+	return clients;
+}
+
+// TODO : Not used, to integrate
+bool IRCClient::isRegistrationSuccessful() const { return isNicked && isUserSet; }
+
+std::vector<std::pair<std::string, std::string> > IRCClient::parseCommands(const std::string &buffer) {
+	std::vector<std::pair<std::string, std::string> > commands;
+	clientBuffer += buffer;
+
+	size_t pos;
+	while ((pos = clientBuffer.find("\r\n")) != std::string::npos) {
+		std::string commandLine = clientBuffer.substr(0, pos);
+		clientBuffer.erase(0, pos + 2);
+
+		std::string command;
+		std::string params;
+		size_t spacePos = commandLine.find(' ');
+
+		if (spacePos != std::string::npos) {
+			command = commandLine.substr(0, spacePos);
+			params = commandLine.substr(spacePos + 1);
+		} else {
+			command = commandLine; // The command might not have parameters
+		}
+
+		// Check and strip newline or any trailing whitespace characters from command
+		if (!command.empty()) {
+			command.erase(command.find_last_not_of(" \n\r\t") + 1); // Trim right
+		}
+
+		// Check and strip newline or any trailing whitespace characters from params
+		if (!params.empty()) {
+			params.erase(params.find_last_not_of(" \n\r\t") + 1); // Trim right
+		}
+
+		commands.push_back(std::make_pair(command, params));
+	}
+	return commands;
+}
+
+bool IRCClient::executeCommand(const std::string &command, const std::string &params) {
+	// Check if the PASS command is required and has not been sent yet
+  //  std::cout << "auth=" << isAuthenticated << " isnick=" << isNicked << " isuserset=" << isUserSet << std::endl;
+	if (server->isPasswordRequired() && !isAuthenticated) {
+		if (command != "PASS") {
+			std::vector<std::string> errorMsgParams;
+			errorMsgParams.push_back(command);
+			server->sendFormattedReply(socket, ERR_NOTREGISTERED, errorMsgParams, "Password required");
+			return false;
+		}
+	} else if (!isAuthenticated || !isNicked || !isUserSet) {
+		if (command != "NICK" && command != "USER") {
+			std::vector<std::string> errorMsgParams;
+			errorMsgParams.push_back(command);
+			server->sendFormattedReply(socket, ERR_NOTREGISTERED, errorMsgParams, "You have not registered");
+			return false;
+		}
 	}
 
-	// Find the command handler in the map
 	std::map<std::string, CommandHandler>::iterator it = commandHandlers.find(command);
 	if (it != commandHandlers.end()) {
 		CommandHandler handler = it->second;
-		(this->*handler)(params);  // Call the handler function
+		(this->*handler)(params); // Call the handler function
 		return true;
+	} else {
+		std::vector<std::string> errorMsgParams;
+		errorMsgParams.push_back(command);
+		server->sendFormattedReply(socket, ERR_UNKNOWNCOMMAND, errorMsgParams, "Unknown command");
+		return false;
+	}
+}
+std::string IRCClient::getFullPrefix() const {
+  std::ostringstream ss;
+  ss << ':' << nick << '!' << user << '@' << host;
+  return ss.str();
+}
+
+bool IRCClient::getChan(std::string chan)
+{
+	for (std::vector<std::string>::iterator it = channels.begin(); it != channels.end(); ++it) {
+		// Si la cible est trouvée, retourner true
+		if (*it == chan) return true;
+	}
+	// Si la cible n'est pas trouvée après avoir parcouru tout le vecteur
+	return false;
+}
+
+
+void IRCClient::handlePing(const std::string &params) {
+	if (params.empty()) {
+		std::vector<std::string> errorMsgParams;
+		errorMsgParams.push_back("PING");
+		this->server->sendFormattedReply(this->socket, ERR_NEEDMOREPARAMS, errorMsgParams, "Not enough parameters"); // ERR_NEEDMOREPARAMS
+		return;
 	}
 
-	std::cout << "Command not recognized: " << command << std::endl;
-	return false;
+	std::string token = params;
+	if (token[0] == ':') {
+		token = token.substr(1);
+	}
+
+	if (token.empty()) {
+		std::vector<std::string> errorMsgParams;
+		errorMsgParams.push_back("PING");
+		this->server->sendFormattedReply(this->socket, ERR_NOORIGIN, errorMsgParams, "No origin specified"); // ERR_NOORIGIN
+		return;
+	}
+
+	// Generate a random token composed of only digits using Sodium library
+	std::ostringstream oss;
+	for (int i = 0; i < 10; ++i) {  // Generate a token of 10 digits
+		oss << (randombytes_uniform(10));  // Generate a random digit between 0 and 9
+	}
+	std::string randomToken = oss.str();
+
+	// Send PONG response with the generated random token
+	std::string response = "PONG :" + randomToken + "\r\n";
+	send(this->socket, response.c_str(), response.size(), 0);
+}
+
+void IRCClient::handleQuit(const std::string &params) {
+    std::string quitMessage = "Client Quit";
+
+    // Vérifier et extraire la raison si présente
+    if (!params.empty()) {
+        std::istringstream iss(params);
+        std::string colonPrefix;
+        std::getline(iss, colonPrefix, ':');
+        std::getline(iss, quitMessage);
+        if (quitMessage.empty()) {
+            quitMessage = "Client Quit";
+        }
+    }
+
+    // Envoyer le message de déconnexion à tous les canaux où le client est présent
+    for (std::vector<std::string>::iterator it = channels.begin(); it != channels.end(); ++it) {
+        std::string& str = *it;
+        std::stringstream ss;
+        ss << server->getChan(str)->getRGB() << "[" << str << "]" << ": " << NORMAL << USER << getNick() << NORMAL << " left" << "\n";
+        server->getChan(str)->msg(ss.str());
+        server->getChan(str)->rmUser(getNick());
+    }
+
+    // Journaliser l'événement de déconnexion
+    std::cout << "Client " << getFullPrefix() << " has quit: " << quitMessage << std::endl;
+    
+    // Préparer le message de déconnexion à envoyer aux autres clients
+    std::string to_send = getFullPrefix() + " QUIT";
+    if (!quitMessage.empty()) {
+        to_send += " :" + quitMessage;
+    }
+    to_send += "\r\n";
+    msg(to_send);
+
+    // Désactiver les événements de lecture/écriture pour ce descripteur de fichier
+    server->disableReadEvents(this->socket);
+
+    // Nettoyer et fermer la connexion
+    server->deleteClient(this->socket);
+}
+
+
+
+void IRCClient::registerAndWelcome(int socket, std::string nick) {
+	if (isRegistrationSuccessful()) {
+	//	std::string clear_screen_command = "\033[2J\033[H";
+	//	send(socket, clear_screen_command.c_str(), clear_screen_command.size(), 0);
+		std::string welcomeArt = "\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠟⢛⣛⣛⣛⣛⡛⠿⢿⣿⣿⣿⡿⠿⠿⠿⠿⠿⢿⣿⣿⣿⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⢿⣿⣿⣿⣿⣿⣿⣿⠿⠟⠋⣁⣴⣶⣿⣿⣿⣿⣿⣿⣿⣷⣶⠌⠉⣉⣤⣶⣶⣶⣶⣶⣤⣈⠙⢿⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⠿⠛⢉⣡⣤⣶⣶⣶⣦⣤⣬⣉⣉⠉⠤⢤⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠁⣠⣾⠟⠉⠀⢀⣶⡄⠀⠙⢿⣷⣄⠹⣿\n\
+                        ⣿⣿⡿⠋⣡⣴⣿⣿⣿⣿⣿⣿⣿⣿⡿⠛⢉⣀⣤⣤⣤⣤⣈⣉⠛⠿⣿⣿⣿⣿⣿⣿⣿⠃⣰⣿⠃⠀⠀⠀⣾⣿⠃⠀⣸⠀⠹⣿⡆⠹\n\
+                        ⠟⢁⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⠟⢁⣤⣾⠟⠛⠉⠉⣩⣉⠉⠻⢷⣦⡈⢻⣿⣿⡿⠿⠋⠀⣿⡇⠀⠀⠀⣼⣿⠇⠀⣴⠃⠀⠀⢹⣿⠀\n\
+                        ⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠋⣠⣿⡟⠁⠀⠀⠀⣸⣿⠏⠀⣰⠀⠻⣿⡄⠉⣡⡤⠶⠦⠀⣿⡇⠀⠀⣼⣿⡟⠀⣼⠃⠀⠀⠀⢸⣿⠀\n\
+                        ⠿⠟⠋⠉⠉⠉⠉⠉⠛⠉⠁⢰⣿⡟⠀⠀⠀⠀⣴⣿⡟⠀⣰⠃⠀⠀⢹⣿⠀⣠⣤⣴⣦⡄⢻⣷⠀⢠⣿⡟⠀⣼⠃⠀⠀⠀⢀⣾⡟⠀\n\
+                        ⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⠂⣾⣿⡇⠀⠀⠀⣸⣿⡟⠀⢠⡏⠀⠀⠀⢸⣿⠆⠻⣿⣿⣿⣿⡄⠻⣷⣌⠛⠀⣰⠏⠀⠀⠀⣠⣾⡿⠃⣠\n\
+                        ⣤⣤⣄⣈⣉⠉⠛⠛⠻⢿⡆⢹⣿⡇⠀⠀⣰⣿⠏⠀⢀⡞⠀⠀⠀⠀⢸⡿⠀⢸⣿⣿⣿⣿⣿⣦⡉⠻⢷⣦⣤⣤⣤⣴⣿⠿⠋⣀⣾⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣷⣶⣤⣁⠘⣿⣷⡀⠰⣿⠏⠀⢀⡞⠀⠀⠀⠀⣠⡿⠃⢀⣾⣿⣿⣿⣿⣿⣿⣿⣷⣄⣀⣉⣉⣁⣀⣀⣰⢾⣿⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡈⠻⣿⣦⣈⠀⠀⠚⠁⠀⢀⣠⡾⠟⢀⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠟⠠⠸⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣄⠉⠛⠛⠷⠶⠖⠚⠛⠉⣀⣴⣿⣿⣿⣿⣿⠿⠛⠛⠋⠉⠉⠉⠉⣉⣉⣀⣀⣠⣤⣶⡄⠠⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣶⣶⣶⣶⣾⣿⣿⣿⠟⠛⠋⠉⠀⠀⠀⣀⣀⣀⡀⠉⠙⠛⠛⠛⠛⠋⠉⠁⠀⢰⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠛⠉⠉⣁⣀⣠⣤⣤⣶⣾⣿⠟⠀⠀⢿⣿⣿⣿⣷⣦⡀⠐⢶⣾⣿⠿⠋⠀⣾⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠀⢰⣿⣿⣿⣿⣻⣿⣯⣽⣶⣿⠿⠟⠀⠀⣀⣀⠙⢿⣿⣿⡄⢠⣤⣤⣶⡆⣴⣿⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣤⣀⣈⡉⠉⠉⠉⣉⣉⣉⣀⣤⣴⣶⣶⣿⣿⣿⣇⠘⣿⣿⣇⠀⣿⣿⣿⠇⣿⢿⣿⣿\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠀⠻⠛⠛⠀⠈⣉⣀⣀⣤⡀⢨⣩\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠋⠀⣠⣤⣶⣶⣶⣾⣿⣿⣿⣿⣿⣿⣧⠀⢹\n\
+                        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⠟⠛⠁⢠⣶⡄⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⢸\n\
+                        ⠉⠛⠛⠛⠛⠛⠿⠿⠿⠿⠿⠿⠿⠿⠛⠛⠛⠛⠛⠛⠋⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⣼⣿⣿⣧⠀⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠈\n\
+                                  \n";
+		std::cout << welcomeArt << std::endl << std::endl;
+		send(socket, welcomeArt.c_str(), welcomeArt.size(), 0);
+		std::vector<std::string> welcomeParams;
+		welcomeParams.push_back(nick);
+		std::string welcomeMessage = "Welcome to the IRC network " + getFullPrefix();
+		server->sendFormattedReply(socket, RPL_WELCOME, welcomeParams, welcomeMessage);
+		isRegistered = true;
+	}
 }
