@@ -17,10 +17,13 @@ To set up and run the project locally, follow these steps:
 
 3. **Run the project**
 
-Once the project is compiled, you can run the **IRC server**. The server will listen for incoming connections from IRC clients (such as **Netcat** or a real IRC client) on a specified port, by default, port `6667` with a password, use the following command:
+Once the project is compiled, you can run the **IRC server**. The server will listen for incoming connections
+from IRC clients (such as **Netcat** or a real IRC client) on a specified port, by default, port `6667` with a password,
+use the following command:
 
 	`./bin/irc 6667 yourpassword`
 
+_____________________________________________________________________________________________________________________________
 ## Using Netcat locally
 
 1. **To connect to your server running on localhost, use the following commands**
@@ -63,9 +66,12 @@ Once the project is compiled, you can run the **IRC server**. The server will li
 	`MODE #mychannel +l 50  # Limit the channel to 50 users`
 	`MODE #mychannel -l  # Remove the user limit`
 
-## Further Documentation
-	https://modern.ircdocs.horse/
+_____________________________________________________________________________________________________________________________
 
+## Further Documentation
+	https://modern.ircdocs.horse
+
+_____________________________________________________________________________________________________________________________
 **Important Note for Some Environments**
 
 	In some environments, such as Netcat, you may need to manually add both a carriage return (\r) and a newline (\n)
@@ -88,7 +94,7 @@ Once the project is compiled, you can run the **IRC server**. The server will li
 	`NICK yournickname`
 	`(this will not be processed correctly)`
 
-____________________________________________________________________________________________________________________________________
+_____________________________________________________________________________________________________________________________
 
 Enjoy and Contribute!
 Thank you for checking out this IRC server implementation! I hope it helps you understand how IRC servers work or serves as a 
