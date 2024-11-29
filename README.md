@@ -8,19 +8,18 @@ To set up and run the project locally, follow these steps:
 
 1. **Clone the repository**
 
-   `git clone https://github.com/Orfreoua/irc.git`
+   git clone https://github.com/Orfreoua/irc.git
 
 2. **Build the project**
 
-	`cd irc`
-
-	`make`
+	`cd irc && make`
 
 3. **Run the project**
 
 Once the project is compiled, you can run the **IRC server**. The server will listen for incoming connections
-from IRC clients (such as **Netcat** or a real IRC client) on a specified port, by default, port `6667` with a password,
-use the following command:
+from IRC clients (such as **Netcat** or a real IRC client) on a specified port, by default, port `6667` with a password.
+
+## use the following command:
 
 	`./bin/irc 6667 yourpassword`
 
