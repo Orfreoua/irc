@@ -19,9 +19,9 @@ To set up and run the project locally, follow these steps:
 Once the project is compiled, you can run the **IRC server**. The server will listen for incoming connections
 from IRC clients (such as **Netcat** or a real IRC client) on a specified port, by default, port `6667` with a password.
 
-## use the following command:
+## use the following command
 
-	`./bin/irc 6667 yourpassword`
+`./bin/irc 6667 yourpassword`
 
 ## Using Netcat locally
 
@@ -50,7 +50,7 @@ from IRC clients (such as **Netcat** or a real IRC client) on a specified port, 
 	`PRIVMSG #channelname :Your message`
 
 7. **Use Additional Commands**
-
+```
 	`INVITE nickname #mychannel`
 
 	`KICK #mychannel nickname`
@@ -76,32 +76,36 @@ from IRC clients (such as **Netcat** or a real IRC client) on a specified port, 
 	`MODE #mychannel +l 50  # Limit the channel to 50 users`
 
 	`MODE #mychannel -l  # Remove the user limit`
+```
 
 ## Further Documentation
 
-	https://modern.ircdocs.horse
+https://modern.ircdocs.horse
 
 ## Important Note for Some Environments
 
-	In some environments, such as Netcat, you may need to manually add both a carriage return (\r) and a newline (\n)
-	at the end of each command for the server to correctly interpret it. Some terminals, like Netcat, do not automatically
-	add these characters, so the server might not process the command as expected.
+In some environments, such as Netcat, you may need to manually add both a carriage return (\r) and a newline (\n)
+at the end of each command for the server to correctly interpret it. Some terminals, like Netcat, do not automatically
+add these characters, so the server might not process the command as expected.
 
-	To do this:
+To do this:
 
-	After typing a command, press Ctrl + V, then Ctrl + M to insert a carriage return (\r).
-	Then, press Ctrl + V, then Ctrl + J to insert a newline (\n).
-	For example:
+After typing a command, press Ctrl + V, then Ctrl + M to insert a carriage return (\r).
+Then, press Ctrl + V, then Ctrl + J to insert a newline (\n).
+For example:
 
-	Correct command (with \r\n):
+Correct command (with \r\n):
 
-	`NICK yournickname`
-	`(press Ctrl + V, Ctrl + M then Ctrl + V, Ctrl + J)`
+```
+NICK yournickname
+(press Ctrl + V, Ctrl + M then Ctrl + V, Ctrl + J)
+```
 
-	Incorrect command (without \r\n):
-
-	`NICK yournickname`
-	`(this will not be processed correctly)`
+Incorrect command (without \r\n):
+```
+NICK yournickname
+(this will not be processed correctly)
+```
 
 ##
 
