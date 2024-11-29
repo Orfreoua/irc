@@ -24,7 +24,6 @@ use the following command:
 
 	`./bin/irc 6667 yourpassword`
 
-_____________________________________________________________________________________________________________________________
 ## Using Netcat locally
 
 1. **To connect to your server running on localhost, use the following commands**
@@ -79,13 +78,11 @@ ________________________________________________________________________________
 
 	`MODE #mychannel -l  # Remove the user limit`
 
-_____________________________________________________________________________________________________________________________
-
 ## Further Documentation
+	
 	https://modern.ircdocs.horse
 
-_____________________________________________________________________________________________________________________________
-**Important Note for Some Environments**
+## Important Note for Some Environments
 
 	In some environments, such as Netcat, you may need to manually add both a carriage return (\r) and a newline (\n)
 	 at the end of each command for the server to correctly interpret it. Some terminals, like Netcat, do not automatically
@@ -107,7 +104,7 @@ ________________________________________________________________________________
 	`NICK yournickname`
 	`(this will not be processed correctly)`
 
-_____________________________________________________________________________________________________________________________
+##
 
 Enjoy and Contribute!
 Thank you for checking out this IRC server implementation! I hope it helps you understand how IRC servers work or serves as a 
